@@ -1,0 +1,25 @@
+{
+    "id": "B5DB4E35",
+    "path": "G:/ownCloud/Disturbance/PCA.R",
+    "project_path": "PCA.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1643967784042.0,
+    "source_on_save": false,
+    "relative_order": 6,
+    "properties": {
+        "cursorPosition": "71,6",
+        "scrollLine": "52",
+        "Source": "Source"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1649774724,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1649774724552,
+    "read_only": false,
+    "read_only_alternatives": []
+}
