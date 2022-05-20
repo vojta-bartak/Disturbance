@@ -2,27 +2,6 @@ library(tidyverse)
 library(performance)
 library(multcomp)
 
-df <- read.table("data2.txt", header=T) %>% 
-  rename(
-    Code = KOD_BODU,
-    Biotope_type = Subtyp_final,
-    Windfalls = Windfall1,
-    BioLegacy = BiologLegac1,
-    Understory = Underg_.,
-    Complexity = Struct_Can,
-    LiveTrees = Total_LT_ha1,
-    RLI0 = RLI,
-    RLI = RLI2
-  )
-df$Biotope_type <- as.factor(df$Biotope_type)
-df <- mutate(df, Biotope_type = dplyr::recode(Biotope_type, "MD"="SSD", "VD"="LSD", "ZPS"="ELT", "ZPZ"="NDF"))
-write.table(dplyr::select(df, Code, Biotope_type, Windfalls, BioLegacy, Understory, Complexity, LiveTrees, RLI,
-                          Total_Rich, Total_Abun, Specialist_Rich, Generalist_Rich, Canopy_Rich, Ground_Shrub_Rich,
-                          Generalist_Abun, Specialist_Abun, Canopy_Abun, Cavity_Abun, Ground_Shrub_Abun, Elev, Cavity_Rich,
-                          Rarity_index), 
-            file = "data_disturbances.csv", row.names = F, sep=";")
-
-
 df <- read.table("data_disturbances.csv", header=T, sep=";") %>% 
   mutate(Biotope_type = factor(Biotope_type, levels = c("SSD", "LSD", "ELT", "NDF")))
 
@@ -370,23 +349,41 @@ ggplot(df.new, aes(x=Biotope_type, y=fit)) +
 ## mutliple comparisons
 summary(glht(m.spec.abund, linfct = mcp(Biotope_type = "Tukey")))
 
-# Red List Index  ----------------------------------------------------------------------------------
+# Red List richness --------------------------------------------------------------------------------
 
 ## Linear model
-m.rli <- lm(RLI ~ Biotope_type + Elev, data=df)
+m.rl.rich <- lm(RedList_Rich ~ Biotope_type + Elev, data=df)
 summary(m.rli)
-par(mfrow=c(2,2)); plot(m.rli); par(mfrow=c(1,1))
-ggplot(df, aes(x=RLI)) +
+par(mfrow=c(2,2)); plot(m.rl.rich); par(mfrow=c(1,1))
+ggplot(df, aes(x=RedList_Rich)) +
   geom_histogram(binwidth = 1, color="white") +
   facet_wrap(~Biotope_type)
-drop1(m.rli, test="F")
+drop1(m.rl.rich, test="F")
 
 ## comparison with GLM
-m2.rli <- glm(RLI ~ Biotope_type + Elev, data=df, family="poisson")
-summary(m2.rli)
-check_overdispersion(m2.rli)
-AIC(m.rli,m2.rli)
-drop1(m2.rli, test="LR")
+m2.rl.rich <- glm(RedList_Rich ~ Biotope_type + Elev, data=df, family="poisson")
+summary(m2.rl.rich)
+check_overdispersion(m2.rl.rich)
+AIC(m.rl.rich,m2.rl.rich)
+drop1(m2.rl.rich, test="LR")
+
+# Red List abundance -------------------------------------------------------------------------------
+
+## Linear model
+m.rl.abund <- lm(RedList_Abun ~ Biotope_type + Elev, data=df)
+summary(m.rli)
+par(mfrow=c(2,2)); plot(m.rl.abund); par(mfrow=c(1,1))
+ggplot(df, aes(x=RedList_Abun)) +
+  geom_histogram(binwidth = 1, color="white") +
+  facet_wrap(~Biotope_type)
+drop1(m.rl.abund, test="F")
+
+## comparison with GLM
+m2.rl.abund <- glm(RedList_Abun ~ Biotope_type + Elev, data=df, family="poisson")
+summary(m2.rl.abund)
+check_overdispersion(m2.rl.abund)
+AIC(m.rl.abund,m2.rl.abund)
+drop1(m2.rl.abund, test="LR")
 
 # Rarity index -------------------------------------------------------------------------------------
 
