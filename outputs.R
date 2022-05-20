@@ -1,4 +1,5 @@
 library(tidyverse)
+library(multcomp)
 library(multcompView)
 
 load("models.RData")
@@ -30,6 +31,7 @@ m.abund %>%
   reduce(left_join, by="term") %>%
   write.table("coef.abund.csv", row.names = F, sep=",")
 
+# anova tables
 m.rich %>%
   lapply(function(m){
     car::Anova(m)[1:2,3:4] %>%
@@ -48,14 +50,7 @@ m.rich %>%
           reduce(left_join, by="term")) %>%
   write.table("anova.csv", row.names = F, sep=",")
 
-summary(m)$coef
-
-nd <- data.frame(Subtyp_final=levels(df$Subtyp_final), Elev=mean(df$Elev))
-
-unique(unlist(strsplit(names(pvs), split=" - ", fixed=T)))
-
-
-
+# biotope types --------------------------------------------------------------------------------------
 models %>%
   names %>%
   lapply(function(nm){
@@ -90,15 +85,7 @@ models %>%
 ggsave("habitat_models.png", dpi=600, height = 16, width = 22, units = "cm")
 
 
-
-
 # multiple comparisons ----------------------------------------------------------------------------------
-m <- models$m.tot.rich
-Anova(m)
-library(multcomp)
-s <- summary(glht(models[[4]], linfct = mcp(Subtyp_final="Tukey")))
-s$test$coefficients
-
 lapply(m.rich, function(m){
   t <- summary(glht(m, linfct = mcp(Subtyp_final="Tukey")))$test
   data.frame(
