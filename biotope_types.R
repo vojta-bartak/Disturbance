@@ -375,7 +375,7 @@ summary(glht(m.spec.abund, linfct = mcp(Biotope_type = "Tukey")))
 ## Linear model
 m.rli <- lm(RLI ~ Biotope_type + Elev, data=df)
 summary(m.rli)
-par(mfrow=c(2,2)); plot(m.thr.rich); par(mfrow=c(1,1))
+par(mfrow=c(2,2)); plot(m.rli); par(mfrow=c(1,1))
 ggplot(df, aes(x=RLI)) +
   geom_histogram(binwidth = 1, color="white") +
   facet_wrap(~Biotope_type)
@@ -393,7 +393,7 @@ drop1(m2.rli, test="LR")
 ## Linear model
 m.rarin <- lm(Rarity_index ~ Biotope_type + Elev, data=df)
 summary(m.rarin)
-par(mfrow=c(2,2)); plot(m.thr.abund); par(mfrow=c(1,1))
+par(mfrow=c(2,2)); plot(m.rarin); par(mfrow=c(1,1))
 ggplot(df, aes(x=Rarity_index)) +
   geom_histogram(binwidth = 1, color="white") +
   facet_wrap(~Biotope_type)
