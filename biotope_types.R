@@ -67,6 +67,7 @@ ggplot(df.new, aes(x=Biotope_type, y=fit)) +
 ## mutliple comparisons
 summary(glht(m.tot.abund, linfct = mcp(Biotope_type = "Tukey")))
 
+
 # Canopy richness -----------------------------------------------------------------------------
 
 ## Linear model

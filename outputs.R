@@ -5,6 +5,8 @@ library(multcompView)
 load("models.RData")
 m.rich <- models[names(models)[grepl("rich", names(models))]]
 m.abund <- models[names(models)[grepl("abund", names(models))]]
+df <- read.table("data_disturbances.csv", header=T, sep=";") %>% 
+  mutate(Biotope_type = factor(Biotope_type, levels = c("SSD", "LSD", "ELT", "NDF")))
 
 m <- models$m.tot.rich
 
@@ -51,17 +53,19 @@ m.rich %>%
   write.table("anova.csv", row.names = F, sep=",")
 
 # biotope types --------------------------------------------------------------------------------------
+nd <- data.frame(Biotope_type=unique(df$Biotope_type),
+                 Elev=mean(df$Elev))
 models %>%
   names %>%
   lapply(function(nm){
     m <- models[[nm]]
     pr <- predict(m, newdata = nd, se=T)
-    smcp <- summary(glht(m, linfct = mcp(Subtyp_final="Tukey")))
+    smcp <- summary(glht(m, linfct = mcp(Biotope_type="Tukey")))
     pvs <- smcp$test$pvalues
     names(pvs) <- str_replace_all(names(smcp$test$coefficients), " ", "")
     ltrs <- data.frame(multcompLetters(pvs)$Letters) %>%
       set_names("letter") %>%
-      rownames_to_column("Subtyp_final")
+      rownames_to_column("Biotope_type")
     ndd <- nd %>%
       mutate(fit=pr$fit, lwr=pr$fit - 1.96*pr$se.fit, upr=pr$fit + 1.96*pr$se.fit, model=nm) %>%
       left_join(ltrs)
@@ -73,9 +77,8 @@ models %>%
            factor(levels=c("tot","spec","gen","can","cav","gr"),
                   labels=c("All species", "Specialists", "Generalists", "Canopy nesters", 
                            "Cavity nesters", "Ground/Shrub nesters")),
-         habitat = factor(Subtyp_final, levels = c("MD", "VD", "ZPS", "ZPZ"),
-                          labels = c("SSD", "LSD", "ELT", "NDF"))) %>%
-  ggplot(aes(x=habitat, y=fit)) +
+         Biotope_type = factor(Biotope_type, levels = c("SSD", "LSD", "ELT", "NDF"))) %>%
+  ggplot(aes(x=Biotope_type, y=fit)) +
   geom_point() +
   geom_errorbar(aes(ymin=lwr, ymax=upr), width=.2) +
   geom_text(aes(y=lwr - 0.5, label = letter), size=2) +
@@ -87,7 +90,7 @@ ggsave("habitat_models.png", dpi=600, height = 16, width = 22, units = "cm")
 
 # multiple comparisons ----------------------------------------------------------------------------------
 lapply(m.rich, function(m){
-  t <- summary(glht(m, linfct = mcp(Subtyp_final="Tukey")))$test
+  t <- summary(glht(m, linfct = mcp(Biotope_type="Tukey")))$test
   data.frame(
     pair = names(t$coefficients),
     diff = round(t$coefficients,4),
@@ -97,7 +100,7 @@ lapply(m.rich, function(m){
 }) %>%
   reduce(left_join, by="pair") %>%
   rbind(lapply(m.abund, function(m){
-    t <- summary(glht(m, linfct = mcp(Subtyp_final="Tukey")))$test
+    t <- summary(glht(m, linfct = mcp(Biotope_type="Tukey")))$test
     data.frame(
       pair = names(t$coefficients),
       diff = round(t$coefficients,4),
