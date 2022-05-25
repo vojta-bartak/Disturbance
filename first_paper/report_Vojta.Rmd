@@ -1,0 +1,434 @@
+---
+title: "Veteran trees and birds"
+author: "Vojtěch Barták"
+date: "31 5 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries and data
+
+Let's load the required libraries.
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(lme4)
+library(car)
+library(performance)
+library(rsq)
+library(multcomp)
+```
+
+Read the data, rename and rescale the variables. (Numerical preditor are rescaled for better convergence of GLMM models.)
+```{r}
+df <- read.table("data_birds_trees.txt", sep="\t", header=T) %>%
+  filter(Forest_type=="Production_forest") %>%
+  mutate(
+    ID = ID_study_plot,
+    rich = Total_num_of_species,
+    rich_sp = Specialist_species,
+    rich_gen = Generalist_species,
+    sh = as.numeric(scale(H_Trees)),
+    ageSD = as.numeric(scale(Age_SD)),
+    age = as.numeric(scale(AgeWMean)),
+    young = as.numeric(scale(Young_cover)),
+    conif = as.numeric(scale(Conifer_cover)),
+    broadl = as.numeric(scale(Broadl_cover)),
+    n70 = as.numeric(scale(NumLT70DBH)),
+    bl70 = as.numeric(scale(NumBroadlLT70DBH)),
+    cat70 = as.factor(NumBroadlLT70DBH_ha)
+  )
+```
+
+# Bird species richness and veteran trees in production forests
+
+## Multicollinearity check
+Multicollinearity check using variance inflection factor
+
+```{r}
+vif(glmer(rich ~ conif+broadl+young+n70+bl70+age+ageSD+sh+(1|ID), family=poisson, data=df))
+```
+
+The large value for `conif` and `broadl` suggest these two are correlated. Indeed:
+
+```{r}
+cor(df$conif, df$broadl, method = "spearman")
+```
+
+The more coniferous trees, the less broadleaved trees. `conif` has larger VIF, so it should be excluded from the model (it's effect is - to a large extent - included in the `broadl` predictor.)
+
+Note: multicollinearity does not depend on the response, so it is enough to check for it once. All models will be without `conif`.
+
+## All bird species
+Fitting the full model:
+```{r}
+m.full <- glmer(rich ~ broadl+young+n70+bl70+age+ageSD+sh+(1|ID), 
+                data = df, family = poisson)
+```
+
+As the warning says, there is a singular fit. Although this is commonly attributed to overly complex random effect structure (see Ben Bolker’s comments on the issue available at https://bbolker.github.io/mixedmodels-misc/glmmFAQ.html), this is obviously not our case (we have single random intercept). Another possible reason could be a low actual variation in bird species richness among the study sites. However, this variation was comparable both with variation of specialist species richness and generalist species richness, although we haven’t encountered a singular model fit for neither of these response variables (see below). Moreover, the model outputs are in general accordance with outputs of the models for specialists and generalists, as well as with outputs of corresponding GLM models of total species richness (not reported). Therefore, we decided to report results of these GLMM models, ignoring their singular fits.
+
+### Model selection
+Backward selection based on p-values. In each step, the predictor with largest insignificant p-value is excluded:
+
+```{r, eval=FALSE}
+Anova(m.full)
+Anova(update(m.full, ~.-young))
+Anova(update(m.full, ~.-young-n70))
+Anova(update(m.full, ~.-young-n70-age))
+Anova(update(m.full, ~.-young-n70-age-broadl))
+Anova(update(m.full, ~.-young-n70-age-broadl-ageSD))
+```
+
+Final model:
+```{r}
+m <- glmer(rich ~ bl70+sh+(1|ID), data = df, family = poisson)
+```
+
+### Final model summary, diagnostics and performance
+Model summary:
+
+```{r}
+summary(m)
+```
+
+Significance of predictors:
+
+```{r}
+Anova(m)
+```
+
+Veteran broad-leaved trees are highly significant, forest diversity is weakly significant.
+
+Check for possible overdispersion:
+
+```{r}
+check_overdispersion(m)
+```
+
+Model performance:
+
+```{r}
+rsq(m)
+```
+
+### Effect plots
+Veteran broadleaved trees:
+
+```{r, warning=FALSE}
+nd <- data.frame(
+  bl70 = seq(min(df$bl70), max(df$bl70), length.out = 100),
+  sh = mean(df$sh)
+)
+mm <- model.matrix(~bl70+sh, nd)
+y <- mm %*% fixef(m)
+pvar <- diag(mm %*% tcrossprod(vcov(m), mm))
+nd$rich <- exp(y)
+nd$upr <- exp(y+1.96*sqrt(pvar))
+nd$lwr <- exp(y-1.96*sqrt(pvar))
+ggplot(nd, aes(y=rich, x=bl70*sd(df$NumBroadlLT70DBH)+mean(df$NumBroadlLT70DBH))) +
+  geom_line() +
+  geom_ribbon(aes(ymin=lwr, ymax=upr), alpha=.3) +
+  geom_jitter(data=df, height = 0.01, width = 0.01, alpha=.3) +
+  labs(x="Number of broadleaved trees over 70 cm",
+       y="Bird species richness")
+```
+
+Shannon tree diversity:
+
+```{r, warning=FALSE}
+nd2 <- data.frame(
+  sh = seq(min(df$sh), max(df$sh), length.out = 100),
+  bl70 = mean(df$bl70)
+)
+mm2 <- model.matrix(~bl70+sh, nd2)
+y2 <- mm2 %*% fixef(m)
+pvar2 <- diag(mm2 %*% tcrossprod(vcov(m), mm2))
+nd2$rich <- exp(y2)
+nd2$upr <- exp(y2+1.96*sqrt(pvar2))
+nd2$lwr <- exp(y2-1.96*sqrt(pvar2))
+ggplot(nd2, aes(y=rich, x=sh*sd(df$H_Trees)+mean(df$H_Trees))) +
+  geom_line() +
+  geom_ribbon(aes(ymin=lwr, ymax=upr), alpha=.3) +
+  geom_jitter(data=df, height = 0.01, width = 0.01, alpha=.3) +
+  labs(x="Shannon diversity of trees",
+       y="Bird species richness")
+```
+
+## Specialist bird species
+Full model:
+
+```{r}
+m.full.sp <- glmer(rich_sp ~ broadl+young+n70+bl70+age+ageSD+sh+(1|ID), 
+                   data = df, family = poisson)
+```
+
+### Model selection
+
+```{r}
+Anova(m.full.sp)
+Anova(update(m.full.sp, ~.-n70))
+Anova(update(m.full.sp, ~.-n70-broadl))
+Anova(update(m.full.sp, ~.-n70-broadl-ageSD))
+Anova(update(m.full.sp, ~.-n70-broadl-ageSD-young))
+Anova(update(m.full.sp, ~.-n70-broadl-ageSD-young-age))
+```
+
+Final model:
+
+```{r}
+m.sp <- glmer(rich_sp ~ bl70+sh+(1|ID), data = df, family = poisson)
+```
+
+Significance of predictors:
+
+```{r}
+Anova(m.sp)
+```
+
+### Final model summary, diagnostics and performance
+
+Model summary:
+
+```{r}
+summary(m.sp)
+```
+
+Overdispersion check:
+
+```{r}
+check_overdispersion(m.sp)
+```
+
+Model performance:
+
+```{r}
+rsq(m.sp)
+```
+
+### Effect plots
+Veteran broadleaved trees:
+
+```{r, warning=FALSE}
+nd.sp <- data.frame(
+  bl70 = seq(min(df$bl70), max(df$bl70), length.out = 100),
+  sh = mean(df$sh)
+)
+mm.sp <- model.matrix(~bl70+sh, nd.sp)
+y.sp <- mm.sp %*% fixef(m.sp)
+pvar.sp <- diag(mm.sp %*% tcrossprod(vcov(m.sp), mm.sp))
+nd.sp$rich_sp <- exp(y.sp)
+nd.sp$upr <- exp(y.sp+1.96*sqrt(pvar.sp))
+nd.sp$lwr <- exp(y.sp-1.96*sqrt(pvar.sp))
+ggplot(nd.sp, aes(y=rich_sp, x=bl70*sd(df$NumBroadlLT70DBH)+mean(df$NumBroadlLT70DBH))) +
+  geom_line() +
+  geom_ribbon(aes(ymin=lwr, ymax=upr), alpha=.3) +
+  geom_jitter(data=df, height = 0.01, width = 0.01, alpha=.3) +
+  labs(x="Number of broadleaved trees over 70 cm",
+       y="Specialist species richness")
+```
+
+Shannon tree diversity:
+```{r, warning=FALSE}
+nd.sp2 <- data.frame(
+  sh = seq(min(df$sh), max(df$sh), length.out = 100),
+  bl70 = mean(df$bl70)
+)
+mm.sp2 <- model.matrix(~bl70+sh, nd.sp2)
+y.sp2 <- mm.sp2 %*% fixef(m.sp)
+pvar.sp2 <- diag(mm.sp2 %*% tcrossprod(vcov(m.sp), mm.sp2))
+nd.sp2$rich_sp <- exp(y.sp2)
+nd.sp2$upr <- exp(y.sp2+1.96*sqrt(pvar.sp2))
+nd.sp2$lwr <- exp(y.sp2-1.96*sqrt(pvar.sp2))
+ggplot(nd.sp2, aes(y=rich_sp, x=sh*sd(df$H_Trees)+mean(df$H_Trees))) +
+  geom_line() +
+  geom_ribbon(aes(ymin=lwr, ymax=upr), alpha=.3) +
+  geom_jitter(data=df, height = 0.01, width = 0.01, alpha=.3) +
+  labs(x="Shannon diversity of trees",
+       y="Specialist species richness")
+```
+
+## Generalist bird species
+Full model:
+
+```{r}
+m.full.gen <- glmer(rich_gen ~ broadl+young+n70+bl70+age+ageSD+sh+(1|ID),
+                         data = df, family = poisson)
+```
+
+### Model selection
+
+```{r}
+Anova(m.full.gen)
+Anova(update(m.full.gen, ~.-young))
+Anova(update(m.full.gen, ~.-young-age))
+Anova(update(m.full.gen, ~.-young-age-n70))
+Anova(update(m.full.gen, ~.-young-age-n70-ageSD))
+Anova(update(m.full.gen, ~.-young-age-n70-ageSD-broadl))
+```
+
+Final model:
+
+```{r}
+m.gen <- glmer(rich_gen ~ bl70+sh+(1|ID), data = df, family = poisson)
+```
+
+Significance of predictors:
+```{r}
+Anova(m.gen)
+```
+
+### Final model summary, diagnostics and performance
+
+```{r}
+summary(m.gen)
+```
+
+Overdispersion check:
+
+```{r}
+check_overdispersion(m.gen)
+```
+
+Model performance:
+
+```{r}
+rsq(m.gen)
+```
+
+### Effect plots
+Veteran broadleaved trees:
+```{r, warning=FALSE}
+nd.gen <- data.frame(
+  bl70 = seq(min(df$bl70), max(df$bl70), length.out = 100),
+  sh = mean(df$sh)
+)
+mm.gen <- model.matrix(~bl70+sh, nd.gen)
+y.gen <- mm.gen %*% fixef(m.gen)
+pvar.gen <- diag(mm.gen %*% tcrossprod(vcov(m.gen), mm.gen))
+nd.gen$rich_gen <- exp(y.gen)
+nd.gen$upr <- exp(y.gen+1.96*sqrt(pvar.gen))
+nd.gen$lwr <- exp(y.gen-1.96*sqrt(pvar.gen))
+ggplot(nd.gen, aes(y=rich_gen, x=bl70*sd(df$NumBroadlLT70DBH)+mean(df$NumBroadlLT70DBH))) +
+  geom_line() +
+  geom_ribbon(aes(ymin=lwr, ymax=upr), alpha=.3) +
+  geom_jitter(data=df, height = 0.01, width = 0.01, alpha=.3) +
+  labs(x="Number of broadleaved trees over 70 cm",
+       y="Generalist species richness")
+```
+
+Shannon tree diversity:
+```{r, warning=FALSE}
+nd.gen2 <- data.frame(
+  sh = seq(min(df$sh), max(df$sh), length.out = 100),
+  bl70 = mean(df$bl70)
+)
+mm.gen2 <- model.matrix(~bl70+sh, nd.gen2)
+y.gen2 <- mm.gen2 %*% fixef(m.gen)
+pvar.gen2 <- diag(mm.gen2 %*% tcrossprod(vcov(m.gen), mm.gen2))
+nd.gen2$rich_gen <- exp(y.gen2)
+nd.gen2$upr <- exp(y.gen2+1.96*sqrt(pvar.gen2))
+nd.gen2$lwr <- exp(y.gen2-1.96*sqrt(pvar.gen2))
+ggplot(nd.gen2, aes(y=rich_gen, x=sh*sd(df$H_Trees)+mean(df$H_Trees))) +
+  geom_line() +
+  geom_ribbon(aes(ymin=lwr, ymax=upr), alpha=.3) +
+  geom_jitter(data=df, height = 0.01, width = 0.01, alpha=.3) +
+  labs(x="Shannon diversity of trees",
+       y="Generalist species richness")
+```
+
+# Veteran tree density categories both in production and natural forests
+
+```{r}
+df2 <- read.table("data_birds_trees.txt", sep="\t", header=T) %>%
+  mutate(
+    ID = ID_study_plot,
+    rich = Total_num_of_species,
+    rich_sp = Specialist_species,
+    rich_gen = Generalist_species,
+    cat70 = as.factor(NumBroadlLT70DBH_ha)
+  )
+```
+
+## All bird species
+
+Model fitting, summary, diagnostics and performance:
+```{r}
+m.dens <- glmer(rich~cat70+(1|ID), data=df2, family=poisson)
+check_overdispersion(m.dens)
+summary(m.dens)
+Anova(m.dens)
+rsq(m.dens)
+```
+
+Effect plot:
+```{r}
+nd.dens <- data.frame(cat70=factor(levels(df2$cat70), levels=levels(df2$cat70)))
+mm.dens <- model.matrix(~cat70, nd.dens)
+y.dens <- mm.dens %*% fixef(m.dens)
+pvar.dens <- diag(mm.dens %*% tcrossprod(vcov(m.dens), mm.dens))
+nd.dens$rich <- exp(y.dens)
+nd.dens$upr <- exp(y.dens + 1.96*sqrt(pvar.dens))
+nd.dens$lwr <- exp(y.dens - 1.96*sqrt(pvar.dens))
+ggplot(nd.dens, aes(x=cat70, y=rich)) +
+  geom_jitter(data=df2, alpha=.2, width = .1, height = .1) +
+  geom_point(color="red") +
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width=.2, color="red") +
+  labs(x="Density of veteran trees",y="Bird species richness")
+```
+
+Multiple comparisons:
+
+```{r}
+summary(glht(m.dens, linfct=mcp(cat70="Tukey")))
+```
+
+
+## Specialist species
+
+Model fitting, summary, diagnostics and performance:
+```{r}
+m.dens.sp <- glmer(rich_sp~cat70+(1|ID), data=df2, family=poisson)
+check_overdispersion(m.dens.sp)
+summary(m.dens.sp)
+Anova(m.dens.sp)
+rsq(m.dens.sp)
+```
+
+No significance.
+
+## Generalist species
+
+```{r}
+m.dens.gen <- glmer(rich_gen~cat70+(1|ID), data=df2, family=poisson)
+check_overdispersion(m.dens.gen)
+summary(m.dens.gen)
+Anova(m.dens.gen)
+rsq(m.dens.gen)
+```
+
+Effect plot:
+```{r}
+nd.dens.gen <- data.frame(cat70=factor(levels(df2$cat70), levels=levels(df2$cat70)))
+mm.dens.gen <- model.matrix(~cat70, nd.dens.gen)
+y.dens.gen <- mm.dens.gen %*% fixef(m.dens.gen)
+pvar.dens.gen <- diag(mm.dens.gen %*% tcrossprod(vcov(m.dens.gen), mm.dens.gen))
+nd.dens.gen$rich <- exp(y.dens.gen)
+nd.dens.gen$upr <- exp(y.dens.gen + 1.96*sqrt(pvar.dens.gen))
+nd.dens.gen$lwr <- exp(y.dens.gen - 1.96*sqrt(pvar.dens.gen))
+ggplot(nd.dens.gen, aes(x=cat70, y=rich)) +
+  geom_jitter(data=df2, alpha=.2, width = .1, height = .1) +
+  geom_point(color="red") +
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width=.2, color="red") +
+  labs(x="Density of veteran trees",y="Bird species richness")
+```
+
+Multiple comparisons:
+
+```{r}
+summary(glht(m.dens.gen, linfct=mcp(cat70="Tukey")))
+```
+

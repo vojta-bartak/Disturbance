@@ -1,0 +1,144 @@
+---
+title: "Effect of veteran tree density on bird species richness"
+author: "Vojtěch Barták"
+date: "2 6 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load the libraries and data:
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(lme4)
+library(car)
+library(MuMIn)
+library(performance)
+library(rsq)
+
+df <- read.table("data_birds_trees2.txt", sep="\t", header=T) %>%
+  mutate(
+    ID = ID_study_plot,
+    rich = Total_num_of_species,
+    rich_sp = Specialist_species,
+    rich_gen = Generalist_species,
+    cat70 = as.factor(NumBroadlLT70DBH_ha),
+    dens = DensityNumBroadlLT70DBH_ha,
+    res = factor(cat70=="R", levels=c(TRUE,FALSE), 
+                 labels=c("Reservation","Production Forest"))
+  )
+```
+
+# Veteran tree density as continuous predictor
+
+## Preliminary plot
+```{r}
+ggplot(df, aes(x=dens, y=rich)) +
+  geom_point(aes(color=res), alpha=.5) +
+  geom_smooth() +
+  theme(legend.title = element_blank()) +
+  labs(x="Density of veteran trees",y="Species richness")
+```
+
+There seems to be a non-linear relationship.
+
+## Model fitting and performance
+First GLMM:
+```{r}
+m.cont <- glmer(rich~dens+(1|ID), data=df, family=poisson)
+```
+
+Singular fit (same problem as previsously). So GLM:
+```{r}
+m.cont <- glm(rich~dens, data=df, family=poisson)
+check_overdispersion(m.cont)
+Anova(m.cont)
+rsq(m.cont)
+```
+
+The model is significant, but the R<sup>2</sup> is low. But beacuse the non-linear relationship detected before, we should try a quadratic model:
+
+```{r}
+m.cont2 <- glm(rich~poly(dens, 2), data=df, family=poisson)
+anova(m.cont, m.cont2, test = "LR")
+```
+
+Indeed, it is significantly better. Confirmed by lower AIC:
+```{r}
+AIC(m.cont, m.cont2)
+```
+
+Model diagnostics, outputs and performance:
+```{r}
+check_overdispersion(m.cont2)
+Anova(m.cont2)
+rsq(m.cont2)
+```
+
+Much better.
+
+## Effect plot
+```{r}
+nd <- data.frame(dens = seq(min(df$dens), max(df$dens), length.out=100))
+nd <- cbind(nd, predict(m.cont2, type="link", se=TRUE, newdata=nd))
+nd$rich <- exp(nd$fit)
+nd$upr <- exp(nd$fit + 1.96*nd$se.fit)
+nd$lwr <- exp(nd$fit - 1.96*nd$se.fit)
+ggplot(nd, aes(x=dens, y=rich)) +
+  geom_line() +
+  geom_ribbon(aes(ymin=lwr, ymax=upr), alpha=.3) +
+  geom_point(data=df, aes(color=res), alpha=.5) +
+  theme(legend.title = element_blank()) +
+  labs(x="Density of veteran trees",y="Species richness") +
+  ggsave("Richness_vs_density.png", dpi=600)
+```
+
+# Veteran tree density as discrete predictor
+
+## Preliminary plot
+```{r}
+ggplot(df, aes(x=cat70, y=rich)) +
+  geom_boxplot()
+```
+
+
+## Model fitting and performance
+```{r}
+m.disc <- glmer(rich~cat70+(1|ID), data=df, family=poisson)
+m.disc <- glm(rich~cat70, data=df, family=poisson)
+check_overdispersion(m.disc)
+summary(m.disc)
+Anova(m.disc)
+rsq(m.disc)
+```
+
+Better R<sup>2</sup> than for the continuous model. It is expectable, as the discrete predictor can capture the non-linear relationship better (with greater freedom) than quadratic continuous predictor.
+
+## Effect plot
+```{r}
+nd <- data.frame(cat70=factor(levels(df$cat70), levels=levels(df$cat70)))
+nd <- cbind(nd, predict(m.disc, type="link", se=TRUE, newdata=nd))
+nd$rich <- exp(nd$fit)
+nd$upr <- exp(nd$fit + 1.96*nd$se.fit)
+nd$lwr <- exp(nd$fit - 1.96*nd$se.fit)
+ggplot(nd, aes(x=cat70, y=rich)) +
+  geom_jitter(data=df, alpha=.2, width = .1, height = .1) +
+  geom_point(color="red") +
+  geom_errorbar(aes(ymin=lwr, ymax=upr), width=.2, color="red") +
+  labs(x="Density of veteran trees",y="Species richness") +
+  ggsave("Richness_vs_density_discrete.png", dpi=600)
+```
+
+## Multiple comparisons
+If you want to test differences between each pair of categories, you can test general linear hypotheses:
+
+```{r, message=FALSE, warning=FALSE}
+library(multcomp)
+mult.comp <- glht(m.disc, linfct=mcp(cat70="Tukey"))
+summary(mult.comp)
+```
+
+From the table, you also see the differences in richness between categories (column `Estimate`) together with their standard errors. But it could be computed from the table of model coefficients as well. 
