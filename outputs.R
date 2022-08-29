@@ -83,7 +83,7 @@ models %>%
   geom_errorbar(aes(ymin=lwr, ymax=upr), width=.2) +
   geom_text(aes(y=lwr - 0.5, label = letter), size=2) +
   facet_grid(group~response) +
-  labs(x="Habitat type", y="Species abundance / richness") +
+  labs(x="Disturbance class", y="Species abundance / richness") +
   theme_bw()
 ggsave("habitat_models.png", dpi=600, height = 16, width = 22, units = "cm")
 
@@ -111,3 +111,19 @@ lapply(m.rich, function(m){
     reduce(left_join, by="pair")) %>%
   write.table("multcomp.csv", row.names = F, sep = ",")
 names(m.rich)
+
+# Diagnostic plots ----------------------------------------------------------
+png("diag.plot.m.tot.rich.png", res=300, width = 18, height = 18, units = "cm")
+par(mfrow=c(2,2))
+plot(m.tot.rich, which=c(1,2,3,5))
+dev.off()
+par(mfrow=c(1,1))
+
+diag.plot <- function(model.name){
+  png(paste("diag",model.name,"png",sep="."), res=300, width = 18, height = 18, units = "cm")
+  par(mfrow=c(2,2))
+  plot(models[[model.name]], which=c(1,2,3,5))
+  dev.off()
+  par(mfrow=c(1,1))
+}
+for (mn in names(models)) diag.plot(mn)

@@ -126,6 +126,21 @@ ggplot(ndfs %>% filter(group %in% c("All species", "Canopy nesters", "Cavity nes
   theme_bw()
 ggsave("figR2_nesting.png", height = 16, width = 22, units = "cm", dpi=300)
 
+ggplot(ndfs %>% filter(group %in% c("All species", "Generalists", "Specialists", "Canopy nesters", "Cavity nesters", "Ground/Shrub nesters") & 
+                         Significance<.05) %>% 
+         mutate(type = factor(type, levels = c("Richness", "Abundance"))), 
+       aes(x=x, y=fit, color=group, fill=group, lty=group)) +
+  geom_line() +
+  geom_ribbon(aes(ymin=fit-1.96*se.fit, ymax=fit+1.96*se.fit), alpha=.3, color=NA) +
+  #  scale_size_manual(values = c(1,2)) +
+  facet_grid(type~var, scales="free") +
+  scale_color_manual(values=c(viridis::viridis(4)[c(1,4,2,3)],"grey50","grey50")) +
+  scale_fill_manual(values=c(viridis::viridis(4)[c(1,4,2,3)],"grey50","grey50")) +
+  scale_linetype_manual(values=c(1,1,1,1,1,2)) +
+  labs(x="", y="Species abundance / richness", color="", fill="", lty="") +
+  theme_bw()
+ggsave("figR2_allgroups_significant_only.png", height = 16, width = 22, units = "cm", dpi=300)
+
 # anova tables -------------------------------------------------------------------------------------------------------
 anovas <- do.call(rbind, lapply(1:length(responses), function(i) {
   Anova(models[[i]]) %>%
