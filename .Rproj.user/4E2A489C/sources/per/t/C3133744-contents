@@ -3,18 +3,19 @@ library(car)
 library(scales)
 
 df <- read.table("data_disturbances.csv", header=T, sep=";") %>% 
-  mutate(Biotope_type = factor(Biotope_type, levels = c("SSD", "LSD", "ELT", "NDF")))
+  mutate(Biotope_type = factor(Biotope_type, levels = c("SSD", "LSD", "ELT", "NDF")),
+         Understorey = Understory)
 
 responses <- c("Total_Rich", "Total_Abun", "Canopy_Rich", "Canopy_Abun", "Cavity_Rich", "Cavity_Abun", 
                "Ground_Shrub_Rich", "Ground_Shrub_Abun", "RedList_Rich", "RedList_Abun", "Rarity_index",
                "Generalist_Rich", "Generalist_Abun", "Specialist_Rich", "Specialist_Abun")
 
-predictors <- c("LiveTrees", "Complexity", "Understory", "Elev", "BioLegacy", "Windfalls")
+predictors <- c("LiveTrees", "Complexity", "Understorey", "Elev", "BioLegacy", "Windfalls")
 
 # collinearity check
 vif(lm(paste(responses[3], paste(paste("poly(", predictors, ",2)", sep=""), collapse = "+"), sep="~"), data=df))
 corrplot::corrplot(cor((df[,predictors])), method="number")
-predictors <- c("LiveTrees", "Complexity", "Understory", "Elev")
+predictors <- c("LiveTrees", "Complexity", "Understorey", "Elev")
 
 # fitting models -----------------------------------------------------------------------------------------------------
 models <- lapply(responses, function(resp){
@@ -70,9 +71,9 @@ ndfs <- do.call(rbind, lapply(1:length(responses), function(i){
   mutate(
     type=ifelse(grepl("Rich", response),"Richness","Abundance"),
     group=sapply(strsplit(response, "_"), function(.) .[1]),
-    var = factor(var, levels=c("Elev", "Complexity", "LiveTrees", "Understory", "Windfalls"),
+    var = factor(var, levels=c("Elev", "Complexity", "LiveTrees", "Understorey", "Windfalls"),
                  labels = c("Elevation\n(m a.s.l.)", "Structural complexity\n(score)", "Live trees density\n(trees/ha)", 
-                            "Understory\n(%)", "Windfalls")),
+                            "Understorey\n(%)", "Windfalls")),
     group = factor(group, levels=c("Total","Canopy","Cavity","Ground","Generalist","Specialist","RedList","Rarity"),
                    labels = c("All species", "Canopy nesters", "Cavity nesters", "Ground/Shrub nesters", 
                               "Generalists", "Specialists", "Red List species", "Rarity index"))
@@ -125,6 +126,21 @@ ggplot(ndfs %>% filter(group %in% c("All species", "Canopy nesters", "Cavity nes
   labs(x="", y="Species richness / abundance", color="", fill="", lty="") +
   theme_bw()
 ggsave("figR2_nesting.png", height = 16, width = 22, units = "cm", dpi=300)
+
+ggplot(ndfs %>% filter(group %in% c("All species", "Generalists", "Specialists", "Canopy nesters", "Cavity nesters", "Ground/Shrub nesters") & 
+                         Significance<.05) %>% 
+         mutate(type = factor(type, levels = c("Richness", "Abundance"))), 
+       aes(x=x, y=fit, color=group, fill=group, lty=group)) +
+  geom_line() +
+  geom_ribbon(aes(ymin=fit-1.96*se.fit, ymax=fit+1.96*se.fit), alpha=.3, color=NA) +
+  #  scale_size_manual(values = c(1,2)) +
+  facet_grid(type~var, scales="free") +
+  scale_color_manual(values=c(viridis::viridis(4)[c(1,4,2,3)],"grey50","grey50")) +
+  scale_fill_manual(values=c(viridis::viridis(4)[c(1,4,2,3)],"grey50","grey50")) +
+  scale_linetype_manual(values=c(1,1,1,1,1,2)) +
+  labs(x="", y="Species abundance / richness", color="", fill="", lty="") +
+  theme_bw()
+ggsave("figR2_allgroups_significant_only.png", height = 16, width = 22, units = "cm", dpi=300)
 
 # anova tables -------------------------------------------------------------------------------------------------------
 anovas <- do.call(rbind, lapply(1:length(responses), function(i) {

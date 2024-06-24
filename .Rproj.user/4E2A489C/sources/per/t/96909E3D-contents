@@ -7,9 +7,11 @@ library(cowplot)
 
 # data ------------------------------------------------------------------------------------------------
 df <- read.table("data_disturbances.csv", header=T, sep=";") %>% 
-  mutate(Biotope_type = factor(Biotope_type, levels = c("SSD", "LSD", "ELT", "NDF")))
-predictors <- c("LiveTrees", "Complexity", "Understory", "Elev", 
-                "BioLegacy", "Windfalls")
+  mutate(Biotope_type = factor(Biotope_type, levels = c("SSD", "LSD", "ELT", "NDF")),
+         TotNatDist = BioLegacy,
+         Understorey = Understory)
+predictors <- c("LiveTrees", "Complexity", "Understorey", "Elev", 
+                "TotNatDist", "Windfalls")
 
 # PCA -------------------------------------------------------------------------------------------------
 pca <- prcomp(df[,predictors], scale=T)
@@ -21,13 +23,13 @@ ggsave("pca_1-2_ellipses.png", height = 14, width = 18, units = "cm", dpi = 300)
 p12 <- fviz_pca_biplot(pca, geom.ind = "point", col.ind = df$Biotope_type) +
   theme_bw() +
   labs(title="", x="PC1 (43.6%)", y="PC2 (24.8%)", 
-       color="Habitat type", shape="Habitat type") +
+       color="Disturbance class", shape="Disturbance class") +
   lims(x=c(-5, 2.8)) +
   theme(legend.position = "bottom")
 p34 <- fviz_pca_biplot(pca, geom.ind = "point", axes = c(3,4), col.ind = df$Biotope_type) +
   theme_bw() +
   labs(title="", x="PC3 (16.0%)", y="PC4 (9.3%)", 
-       color="Habitat type", shape="Habitat type") +
+       color="Disturbance class", shape="Disturbance class") +
   theme(legend.position = "bottom")
 
 ggsave(plot=cowplot::plot_grid(p12,p34), filename = "pca.png", dpi=300, width = 26, height = 14, units = "cm")

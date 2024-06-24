@@ -16,6 +16,9 @@ ggplot(df, aes(x=Total_Rich)) +
   facet_wrap(~Biotope_type)
 drop1(m.tot.rich, test="F")
 
+
+
+
 ## comparison with GLM
 m2.tot.rich <- glm(Total_Rich ~ Biotope_type + Elev, data=df, family="poisson")
 summary(m2.tot.rich)
